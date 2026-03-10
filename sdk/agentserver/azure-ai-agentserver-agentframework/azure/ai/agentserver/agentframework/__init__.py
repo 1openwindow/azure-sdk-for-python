@@ -6,7 +6,7 @@ __path__ = __import__("pkgutil").extend_path(__path__, __name__)
 
 from typing import Callable, Optional, Union, overload
 
-from agent_framework import AgentProtocol, BaseAgent, Workflow, WorkflowBuilder
+from agent_framework import SupportsAgentRun, BaseAgent, Workflow, WorkflowBuilder
 from azure.core.credentials_async import AsyncTokenCredential
 from azure.core.credentials import TokenCredential
 
@@ -22,16 +22,16 @@ from .persistence import AgentThreadRepository, CheckpointRepository
 
 @overload
 def from_agent_framework(
-        agent: Union[BaseAgent, AgentProtocol],
+        agent: Union[BaseAgent, SupportsAgentRun],
         /,
         credentials: Optional[Union[AsyncTokenCredential, TokenCredential]] = None,
         thread_repository: Optional[AgentThreadRepository]=None
     ) -> "AgentFrameworkAIAgentAdapter":
     """
-    Create an Agent Framework AI Agent Adapter from an AgentProtocol or BaseAgent.
+    Create an Agent Framework AI Agent Adapter from a SupportsAgentRun or BaseAgent.
 
     :param agent: The agent to adapt.
-    :type agent: Union[BaseAgent, AgentProtocol]
+    :type agent: Union[BaseAgent, SupportsAgentRun]
     :param credentials: Optional asynchronous token credential for authentication.
     :type credentials: Optional[Union[AsyncTokenCredential, TokenCredential]]
     :param thread_repository: Optional thread repository for agent thread management.
@@ -75,7 +75,7 @@ def from_agent_framework(
     ...
 
 def from_agent_framework(
-    agent_or_workflow: Union[BaseAgent, AgentProtocol, WorkflowBuilder, Callable[[], Workflow]],
+    agent_or_workflow: Union[BaseAgent, SupportsAgentRun, WorkflowBuilder, Callable[[], Workflow]],
     /,
     credentials: Optional[Union[AsyncTokenCredential, TokenCredential]] = None,
     thread_repository: Optional[AgentThreadRepository] = None,
@@ -87,7 +87,7 @@ def from_agent_framework(
     One of agent or workflow must be provided.
 
     :param agent_or_workflow: The agent to adapt.
-    :type agent_or_workflow: Optional[Union[BaseAgent, AgentProtocol]]
+    :type agent_or_workflow: Optional[Union[BaseAgent, SupportsAgentRun]]
     :param credentials: Optional asynchronous token credential for authentication.
     :type credentials: Optional[Union[AsyncTokenCredential, TokenCredential]]
     :param thread_repository: Optional thread repository for agent thread management.
@@ -118,12 +118,12 @@ def from_agent_framework(
         )
     # raise TypeError("workflow must be a WorkflowBuilder or callable returning a Workflow")
 
-    if isinstance(agent_or_workflow, (AgentProtocol, BaseAgent)):
+    if isinstance(agent_or_workflow, (SupportsAgentRun, BaseAgent)):
         return AgentFrameworkAIAgentAdapter(agent_or_workflow,
                                             credentials=credentials,
                                             thread_repository=thread_repository)
     raise TypeError("You must provide one of the instances of type "
-                    "[AgentProtocol, BaseAgent, WorkflowBuilder or callable returning a Workflow]")
+                    "[SupportsAgentRun, BaseAgent, WorkflowBuilder or callable returning a Workflow]")
 
 
 __all__ = [

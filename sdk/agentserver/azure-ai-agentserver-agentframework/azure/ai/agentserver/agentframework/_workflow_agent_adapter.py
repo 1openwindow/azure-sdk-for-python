@@ -11,7 +11,6 @@ from typing import (
 )
 
 from agent_framework import Workflow, CheckpointStorage, WorkflowAgent, WorkflowCheckpoint
-from agent_framework._workflows import get_checkpoint_summary
 from azure.core.credentials import TokenCredential
 from azure.core.credentials_async import AsyncTokenCredential
 
@@ -60,7 +59,7 @@ class AgentFrameworkWorkflowAdapter(AgentFrameworkAgent):
             logger.info("Starting WorkflowAgent agent_run with stream=%s", context.stream)
             request_input = context.request.get("input")
 
-            agent_thread = await self._load_agent_thread(context, agent)
+            agent_thread = await self._load_agent_session(context, agent)
 
             checkpoint_storage = None
             selected_checkpoint = None
@@ -69,8 +68,9 @@ class AgentFrameworkWorkflowAdapter(AgentFrameworkAgent):
                 if checkpoint_storage:
                     selected_checkpoint = await self._get_latest_checkpoint(checkpoint_storage)
             if selected_checkpoint:
-                summary = get_checkpoint_summary(selected_checkpoint)
-                if summary.status == "completed":
+                checkpoint_status = getattr(selected_checkpoint, 'status', None) or \
+                    (selected_checkpoint.metadata or {}).get('status', None)
+                if checkpoint_status == "completed":
                     logger.warning(
                         "Selected checkpoint %s is completed. Will not resume from it.",
                         selected_checkpoint.checkpoint_id,
@@ -91,9 +91,10 @@ class AgentFrameworkWorkflowAdapter(AgentFrameworkAgent):
             if context.stream:
                 return self._run_streaming_updates(
                     context=context,
-                    run_stream=lambda: agent.run_stream(
+                    run_stream=lambda: agent.run(
                         message,
-                        thread=agent_thread,
+                        stream=True,
+                        session=agent_thread,
                         checkpoint_storage=checkpoint_storage,
                     ),
                     agent_thread=agent_thread,
@@ -103,11 +104,11 @@ class AgentFrameworkWorkflowAdapter(AgentFrameworkAgent):
             logger.info("Running WorkflowAgent in non-streaming mode")
             result = await agent.run(
                 message,
-                thread=agent_thread,
+                session=agent_thread,
                 checkpoint_storage=checkpoint_storage)
             logger.debug("WorkflowAgent run completed, result type: %s", type(result))
 
-            await self._save_agent_thread(context, agent_thread)
+            await self._save_agent_session(context, agent_thread)
 
             non_streaming_converter = AgentFrameworkOutputNonStreamingConverter(context, hitl_helper=self._hitl_helper)
             transformed_result = non_streaming_converter.transform_output_for_response(result)

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 from typing import Any
 
 import pytest
-from agent_framework import AIFunction, ChatOptions
+from agent_framework import FunctionTool, ChatOptions
 from pydantic import Field, create_model
 
 # Import schema models directly from client._models to avoid heavy azure.identity import
@@ -93,7 +93,7 @@ async def test_to_aifunction_builds_pydantic_model_and_invokes(monkeypatch: pyte
 
 	client = FoundryToolClient(tools=[])
 	ai_func = client._to_aifunction(resolved_tool)
-	assert isinstance(ai_func, AIFunction)
+	assert isinstance(ai_func, FunctionTool)
 	assert ai_func.name == "echo"
 	assert ai_func.description == "Echo tool"
 
@@ -135,7 +135,7 @@ async def test_list_tools_uses_catalog_and_converts(monkeypatch: pytest.MonkeyPa
 	assert args[0] == list(allowed)
 
 	assert len(functions) == 1
-	assert isinstance(functions[0], AIFunction)
+	assert isinstance(functions[0], FunctionTool)
 	assert functions[0].name == "allowed_tool"
 
 
@@ -148,7 +148,7 @@ async def test_middleware_process_creates_chat_options_when_missing(monkeypatch:
 		return kwargs
 
 	DummyInput = create_model("DummyInput")
-	injected = [AIFunction(name="t", description="d", func=dummy_tool, input_model=DummyInput)]
+	injected = [FunctionTool(name="t", description="d", func=dummy_tool, input_model=DummyInput)]
 	monkeypatch.setattr(middleware._foundry_tool_client, "list_tools", AsyncMock(return_value=injected))
 
 	context = SimpleNamespace(chat_options=None)
@@ -170,7 +170,7 @@ async def test_middleware_process_appends_to_existing_chat_options(monkeypatch: 
 		return kwargs
 
 	DummyInput = create_model("DummyInput")
-	injected = [AIFunction(name="t2", description="d2", func=dummy_tool, input_model=DummyInput)]
+	injected = [FunctionTool(name="t2", description="d2", func=dummy_tool, input_model=DummyInput)]
 	monkeypatch.setattr(middleware._foundry_tool_client, "list_tools", AsyncMock(return_value=injected))
 
 	# Existing ChatOptions with no tools should become injected
@@ -180,7 +180,7 @@ async def test_middleware_process_appends_to_existing_chat_options(monkeypatch: 
 	assert context.chat_options.tools == injected
 
 	# Existing ChatOptions with tools should be appended
-	existing = [AIFunction(name="t1", description="d1", func=dummy_tool, input_model=DummyInput)]
+	existing = [FunctionTool(name="t1", description="d1", func=dummy_tool, input_model=DummyInput)]
 	context = SimpleNamespace(chat_options=ChatOptions(tools=existing))
 	next_fn = AsyncMock()
 	await middleware.process(context, next_fn)

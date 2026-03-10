@@ -8,13 +8,12 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from agent_framework import (
-    AgentThread,
-    ChatMessage,
-    RequestInfoEvent,
-    Role as ChatRole,
+    AgentSession,
+    Content,
+    Message,
     WorkflowCheckpoint,
+    WorkflowEvent,
 )
-from agent_framework._types import TextContent
 
 from azure.ai.agentserver.core.logger import get_logger
 
@@ -25,7 +24,7 @@ class AgentFrameworkInputConverter:
     """Normalize inputs for agent.run.
 
     Accepts: str | List | None
-    Returns: None | str | ChatMessage | list[str] | list[ChatMessage]
+    Returns: None | str | Message | list[str] | list[Message]
     """
     def __init__(self, *, hitl_helper=None) -> None:
         self._hitl_helper = hitl_helper
@@ -33,9 +32,9 @@ class AgentFrameworkInputConverter:
     async def transform_input(
         self,
         input: str | List[Dict] | None,
-        agent_thread: Optional[AgentThread] = None,
+        agent_thread: Optional[AgentSession] = None,
         checkpoint: Optional[WorkflowCheckpoint] = None,
-    ) -> str | ChatMessage | list[str] | list[ChatMessage] | None:
+    ) -> str | Message | list[str] | list[Message] | None:
         logger.debug("Transforming input of type: %s", type(input))
 
         if input is None:
@@ -63,10 +62,10 @@ class AgentFrameworkInputConverter:
     def _transform_input_internal(
         self,
         input: str | List[Dict] | None,
-    ) -> str | ChatMessage | list[str] | list[ChatMessage] | None:
+    ) -> str | Message | list[str] | list[Message] | None:
         try:
             if isinstance(input, list):
-                messages: list[str | ChatMessage] = []
+                messages: list[str | Message] = []
 
                 for item in input:
                     # Case 1: ImplicitUserMessage with content as str or list of ItemContentInputText
@@ -90,11 +89,11 @@ class AgentFrameworkInputConverter:
                         and item.get("content") is not None
                     ):
                         role_map = {
-                            "user": ChatRole.USER,
-                            "assistant": ChatRole.ASSISTANT,
-                            "system": ChatRole.SYSTEM,
+                            "user": "user",
+                            "assistant": "assistant",
+                            "system": "system",
                         }
-                        role = role_map.get(item.get("role", "user"), ChatRole.USER)
+                        role = role_map.get(item.get("role", "user"), "user")
 
                         content_text = ""
                         item_content = item.get("content", None)
@@ -109,7 +108,7 @@ class AgentFrameworkInputConverter:
                             content_text = str(item_content)
 
                         if content_text:
-                            messages.append(ChatMessage(role=role, text=content_text))
+                            messages.append(Message(role=role, text=content_text))
 
                 # Determine the most natural return type
                 if not messages:
@@ -118,16 +117,16 @@ class AgentFrameworkInputConverter:
                     return messages[0]
                 if all(isinstance(m, str) for m in messages):
                     return [m for m in messages if isinstance(m, str)]
-                if all(isinstance(m, ChatMessage) for m in messages):
-                    return [m for m in messages if isinstance(m, ChatMessage)]
+                if all(isinstance(m, Message) for m in messages):
+                    return [m for m in messages if isinstance(m, Message)]
 
-                # Mixed content: coerce ChatMessage to str by extracting TextContent parts
+                # Mixed content: coerce Message to str by extracting text content parts
                 result: list[str] = []
                 for msg in messages:
-                    if isinstance(msg, ChatMessage):
+                    if isinstance(msg, Message):
                         text_parts: list[str] = []
-                        for c in getattr(msg, "contents", []) or []:
-                            if isinstance(c, TextContent):
+                        for c in getattr(msg, 'contents', []) or []:
+                            if getattr(c, 'type', None) == 'text':
                                 text_parts.append(c.text)
                         result.append(" ".join(text_parts) if text_parts else str(msg))
                     else:
@@ -153,7 +152,7 @@ class AgentFrameworkInputConverter:
         self,
         pending_request: Dict,
         input: List[Dict],
-    ) -> Optional[List[ChatMessage]]:
+    ) -> Optional[List[Message]]:
         if not self._hitl_helper:
             logger.warning("HitL helper not provided; cannot validate HitL response.")
             return None
@@ -174,8 +173,8 @@ class AgentFrameworkInputConverter:
             return None
         request_info = pending_request[call_id]
         if isinstance(request_info, dict):
-            request_info = RequestInfoEvent.from_dict(request_info)
-        if not isinstance(request_info, RequestInfoEvent):
+            request_info = WorkflowEvent.from_dict(request_info)
+        if not isinstance(request_info, WorkflowEvent):
             logger.warning("No valid pending request info found for call_id: %s", call_id)
             return None
 

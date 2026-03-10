@@ -13,9 +13,11 @@ from azure.core.credentials_async import AsyncTokenCredential
 def test_checkpoint_repository_is_optional() -> None:
     """Test that checkpoint_repository is optional and defaults to None."""
     from azure.ai.agentserver.agentframework import from_agent_framework
-    from agent_framework import WorkflowBuilder
+    from agent_framework import WorkflowBuilder, SupportsAgentRun
 
-    builder = WorkflowBuilder()
+    mock_executor = Mock(spec=SupportsAgentRun)
+    mock_executor.name = "test-executor"
+    builder = WorkflowBuilder(start_executor=mock_executor)
 
     # Should not raise
     adapter = from_agent_framework(builder)
@@ -28,9 +30,11 @@ def test_foundry_checkpoint_repository_passed_directly() -> None:
     """Test that FoundryCheckpointRepository can be passed via checkpoint_repository."""
     from azure.ai.agentserver.agentframework import from_agent_framework
     from azure.ai.agentserver.agentframework.persistence import FoundryCheckpointRepository
-    from agent_framework import WorkflowBuilder
+    from agent_framework import WorkflowBuilder, SupportsAgentRun
 
-    builder = WorkflowBuilder()
+    mock_executor = Mock(spec=SupportsAgentRun)
+    mock_executor.name = "test-executor"
+    builder = WorkflowBuilder(start_executor=mock_executor)
     mock_credential = Mock(spec=AsyncTokenCredential)
 
     repo = FoundryCheckpointRepository(

@@ -2,7 +2,7 @@ import importlib
 
 import pytest
 
-from agent_framework import ChatMessage, Role as ChatRole
+from agent_framework import Message
 
 converter_module = importlib.import_module(
 	"azure.ai.agentserver.agentframework.models.agent_framework_input_converters"
@@ -69,8 +69,8 @@ async def test_transform_explicit_message_returns_chat_message(converter: AgentF
 
 	result = await converter.transform_input(payload)
 
-	assert isinstance(result, ChatMessage)
-	assert result.role == ChatRole.ASSISTANT
+	assert isinstance(result, Message)
+	assert result.role == "assistant"
 	assert result.text == "Hi there"
 
 
@@ -96,10 +96,10 @@ async def test_transform_multiple_explicit_messages_returns_list(converter: Agen
 
 	assert isinstance(result, list)
 	assert len(result) == 2
-	assert all(isinstance(item, ChatMessage) for item in result)
-	assert result[0].role == ChatRole.USER
+	assert all(isinstance(item, Message) for item in result)
+	assert result[0].role == "user"
 	assert result[0].text == "Hello"
-	assert result[1].role == ChatRole.ASSISTANT
+	assert result[1].role == "assistant"
 	assert result[1].text == "Greetings"
 
 

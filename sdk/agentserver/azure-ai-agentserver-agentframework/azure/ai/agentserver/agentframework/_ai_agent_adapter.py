@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, AsyncGenerator, Optional, Union
 
-from agent_framework import AgentProtocol
+from agent_framework import SupportsAgentRun
 from azure.core.credentials import TokenCredential
 from azure.core.credentials_async import AsyncTokenCredential
 
@@ -28,7 +28,7 @@ from .persistence import AgentThreadRepository
 logger = get_logger()
 
 class AgentFrameworkAIAgentAdapter(AgentFrameworkAgent):
-    def __init__(self, agent: AgentProtocol,
+    def __init__(self, agent: SupportsAgentRun,
                  credentials: Optional[Union[AsyncTokenCredential, TokenCredential]] = None,
                  thread_repository: Optional[AgentThreadRepository] = None,
                  *,
@@ -47,7 +47,7 @@ class AgentFrameworkAIAgentAdapter(AgentFrameworkAgent):
             logger.info("Starting AIAgent agent_run with stream=%s", context.stream)
             request_input = context.request.get("input")
 
-            agent_thread = await self._load_agent_thread(context, self._agent)
+            agent_thread = await self._load_agent_session(context, self._agent)
 
             input_converter = AgentFrameworkInputConverter(hitl_helper=self._hitl_helper)
             message = await input_converter.transform_input(
@@ -68,9 +68,10 @@ class AgentFrameworkAIAgentAdapter(AgentFrameworkAgent):
             if context.stream:
                 return self._run_streaming_updates(
                     context=context,
-                    run_stream=lambda: self._agent.run_stream(
+                    run_stream=lambda: self._agent.run(
                         message,
-                        thread=agent_thread,
+                        stream=True,
+                        session=agent_thread,
                     ),
                     agent_thread=agent_thread,
                 )
@@ -79,9 +80,9 @@ class AgentFrameworkAIAgentAdapter(AgentFrameworkAgent):
             logger.info("Running agent in non-streaming mode")
             result = await self._agent.run(
                 message,
-                thread=agent_thread)
+                session=agent_thread)
             logger.debug("Agent run completed, result type: %s", type(result))
-            await self._save_agent_thread(context, agent_thread)
+            await self._save_agent_session(context, agent_thread)
 
             non_streaming_converter = AgentFrameworkOutputNonStreamingConverter(context, hitl_helper=self._hitl_helper)
             transformed_result = non_streaming_converter.transform_output_for_response(result)

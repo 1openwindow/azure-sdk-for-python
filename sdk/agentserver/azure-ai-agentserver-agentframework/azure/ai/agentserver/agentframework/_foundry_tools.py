@@ -8,7 +8,7 @@ from __future__ import annotations
 import inspect
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
-from agent_framework import AIFunction, ChatContext, ChatOptions, ChatMiddleware
+from agent_framework import FunctionTool, ChatContext, ChatOptions, ChatMiddleware
 from pydantic import Field, create_model
 
 from azure.ai.agentserver.core import AgentServerContext
@@ -47,19 +47,19 @@ class FoundryToolClient:
     ) -> None:
         self._allowed_tools: List[FoundryToolLike] = [ensure_foundry_tool(tool) for tool in tools]
 
-    async def list_tools(self) -> List[AIFunction]:
+    async def list_tools(self) -> List[FunctionTool]:
         server_context = AgentServerContext.get()
         foundry_tool_catalog = server_context.tools.catalog
         resolved_tools = await foundry_tool_catalog.list(self._allowed_tools)
         return [self._to_aifunction(tool) for tool in resolved_tools]
 
-    def _to_aifunction(self, foundry_tool: "ResolvedFoundryTool") -> AIFunction:
-        """Convert an FoundryTool to an Agent Framework AI Function
+    def _to_aifunction(self, foundry_tool: "ResolvedFoundryTool") -> FunctionTool:
+        """Convert an FoundryTool to an Agent Framework FunctionTool
 
         :param foundry_tool: The FoundryTool to convert.
         :type foundry_tool: ~azure.ai.agentserver.core.client.tools.aio.FoundryTool
-        :return: An AI Function Tool.
-        :rtype: AIFunction
+        :return: A FunctionTool.
+        :rtype: FunctionTool
         """
         # Get the input schema from the tool descriptor
         input_schema = foundry_tool.input_schema or {}
@@ -103,8 +103,8 @@ class FoundryToolClient:
             return await server_context.tools.invoke(foundry_tool, kwargs)
         _attach_signature_from_pydantic_model(tool_func, input_model)
 
-        # Create and return the AIFunction
-        return AIFunction(
+        # Create and return the FunctionTool
+        return FunctionTool(
             name=foundry_tool.name,
             description=foundry_tool.description or "No description available",
             func=tool_func,

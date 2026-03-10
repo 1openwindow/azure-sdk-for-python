@@ -4,7 +4,7 @@
 from collections.abc import MutableMapping, Sequence
 from typing import Any, List, Optional
 
-from agent_framework import ChatMessage
+from agent_framework import Message
 from azure.ai.projects import AIProjectClient
 
 from azure.ai.agentserver.core.logger import get_logger
@@ -18,7 +18,7 @@ class FoundryConversationMessageStore:
     """A ChatMessageStoreProtocol implementation that reads messages from Azure AI Foundry Conversations API.
 
     This message store fetches messages from the Foundry Conversations API and converts them
-    to ChatMessage format. Messages added via add_messages() are cached locally but not
+    to Message format. Messages added via add_messages() are cached locally but not
     persisted back to the API.
 
     :param conversation_id: The conversation ID to fetch messages from.
@@ -41,28 +41,28 @@ class FoundryConversationMessageStore:
         """
         self._conversation_id = conversation_id
         self._project_client = project_client
-        self._retrieved_messages: list[ChatMessage] = []
-        self._cached_messages: list[ChatMessage] = []
+        self._retrieved_messages: list[Message] = []
+        self._cached_messages: list[Message] = []
 
 
-    async def list_messages(self) -> list[ChatMessage]:
+    async def list_messages(self) -> list[Message]:
         """Get all messages from the conversation, including cached messages.
 
-        Fetches messages from the Foundry Conversations API, converts them to ChatMessage format,
+        Fetches messages from the Foundry Conversations API, converts them to Message format,
         and combines them with any locally cached messages.
 
-        :return: List of ChatMessage objects, ordered from oldest to newest.
-        :rtype: list[ChatMessage]
+        :return: List of Message objects, ordered from oldest to newest.
+        :rtype: list[Message]
         """
         return self._retrieved_messages + self._cached_messages
 
-    async def add_messages(self, messages: Sequence[ChatMessage]) -> None:
+    async def add_messages(self, messages: Sequence[Message]) -> None:
         """Add messages to the local cache.
 
         Messages are cached locally but not persisted to the API.
 
-        :param messages: The sequence of ChatMessage objects to add.
-        :type messages: Sequence[ChatMessage]
+        :param messages: The sequence of Message objects to add.
+        :type messages: Sequence[Message]
         """
         self._cached_messages.extend(messages)
 
@@ -117,8 +117,8 @@ class FoundryConversationMessageStore:
         self._cached_messages = []
         for msg_data in cached_messages_data:
             if isinstance(msg_data, dict):
-                self._cached_messages.append(ChatMessage.from_dict(msg_data))
-            elif isinstance(msg_data, ChatMessage):
+                self._cached_messages.append(Message.from_dict(msg_data))
+            elif isinstance(msg_data, Message):
                 self._cached_messages.append(msg_data)
         await self.retrieve_messages()
 
@@ -138,7 +138,7 @@ class FoundryConversationMessageStore:
         filtered_messages = HumanInTheLoopHelper().remove_hitl_content_from_thread(history_messages or [])
         self._retrieved_messages = filtered_messages
 
-    async def _get_conversation_history(self) -> List[ChatMessage]:
+    async def _get_conversation_history(self) -> List[Message]:
         # Retrieve conversation history from Foundry.
         if not self._project_client:
             logger.error("AIProjectClient is not configured; cannot load conversation history.")
@@ -148,7 +148,7 @@ class FoundryConversationMessageStore:
             converter = ConversationItemConverter()
             async with self._project_client.get_openai_client() as openai_client:
                 raw_items = await openai_client.conversations.items.list(self._conversation_id)
-                retrieved_messages: list[ChatMessage] = []
+                retrieved_messages: list[Message] = []
 
                 if raw_items is None:
                     self._retrieved_messages = []

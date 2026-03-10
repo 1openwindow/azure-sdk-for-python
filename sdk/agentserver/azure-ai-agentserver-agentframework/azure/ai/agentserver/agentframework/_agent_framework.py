@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from typing import Any, AsyncGenerator, Optional, TYPE_CHECKING, Union, Callable
 
-from agent_framework import AgentProtocol, AgentThread, WorkflowAgent
+from agent_framework import SupportsAgentRun, AgentSession, WorkflowAgent
 from agent_framework.azure import AzureAIClient  # pylint: disable=no-name-in-module
 from opentelemetry import trace
 
@@ -177,50 +177,50 @@ class AgentFrameworkAgent(FoundryCBAgent):
     ]:
         raise NotImplementedError("This method is implemented in the base class.")
 
-    async def _load_agent_thread(
+    async def _load_agent_session(
         self,
         context: AgentRunContext,
-        agent: Union[AgentProtocol, WorkflowAgent],
-    ) -> Optional[AgentThread]:
-        """Load the agent thread for a given conversation ID.
+        agent: Union[SupportsAgentRun, WorkflowAgent],
+    ) -> Optional[AgentSession]:
+        """Load the agent session for a given conversation ID.
 
         :param context: The agent run context.
         :type context: AgentRunContext
         :param agent: The agent instance.
-        :type agent: AgentProtocol | WorkflowAgent
+        :type agent: SupportsAgentRun | WorkflowAgent
 
-        :return: The loaded AgentThread if available, None otherwise.
-        :rtype: Optional[AgentThread]
+        :return: The loaded AgentSession if available, None otherwise.
+        :rtype: Optional[AgentSession]
         """
         if self._thread_repository and context.conversation_id:
             conversation_id = context.conversation_id
             agent_thread = await self._thread_repository.get(conversation_id, agent=agent)
             if agent_thread:
-                logger.info(f"Loaded agent thread for conversation: {conversation_id}")
+                logger.info(f"Loaded agent session for conversation: {conversation_id}")
                 return agent_thread
-            return agent.get_new_thread()
+            return agent.create_session()
         return None
 
-    async def _save_agent_thread(self, context: AgentRunContext, agent_thread: AgentThread) -> None:
-        """Save the agent thread for a given conversation ID.
+    async def _save_agent_session(self, context: AgentRunContext, agent_thread: AgentSession) -> None:
+        """Save the agent session for a given conversation ID.
 
         :param context: The agent run context.
         :type context: AgentRunContext
-        :param agent_thread: The agent thread to save.
-        :type agent_thread: AgentThread
+        :param agent_thread: The agent session to save.
+        :type agent_thread: AgentSession
 
         :return: None
         :rtype: None
         """
         if agent_thread and self._thread_repository and (conversation_id := context.conversation_id):
             await self._thread_repository.set(conversation_id, agent_thread)
-            logger.info(f"Saved agent thread for conversation: {conversation_id}")
+            logger.info(f"Saved agent session for conversation: {conversation_id}")
 
     def _run_streaming_updates(
         self,
         context: AgentRunContext,
         run_stream: Callable[[], AsyncGenerator[Any, None]],
-        agent_thread: Optional[AgentThread] = None,
+        agent_thread: Optional[AgentSession] = None,
     ) -> AsyncGenerator[ResponseStreamEvent, Any]:
         """
         Execute a streaming run with shared OAuth/error handling.
@@ -229,8 +229,8 @@ class AgentFrameworkAgent(FoundryCBAgent):
         :type context: AgentRunContext
         :param run_stream: A callable that invokes the agent in stream mode
         :type run_stream: Callable[[], AsyncGenerator[Any, None]]
-        :param agent_thread: The agent thread to use during streaming updates.
-        :type agent_thread: Optional[AgentThread]
+:param agent_thread: The agent session to use during streaming updates.
+    :type agent_thread: Optional[AgentSession]
 
         :return: An async generator yielding streaming events.
         :rtype: AsyncGenerator[ResponseStreamEvent, Any]
@@ -250,7 +250,7 @@ class AgentFrameworkAgent(FoundryCBAgent):
                         update_count += 1
                         yield event
 
-                    await self._save_agent_thread(context, agent_thread)
+                    await self._save_agent_session(context, agent_thread)
                     logger.info("Streaming completed with %d updates", update_count)
                 except OAuthConsentRequiredError as e:
                     logger.info("OAuth consent required during streaming updates")

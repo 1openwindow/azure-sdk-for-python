@@ -5,13 +5,11 @@ from typing import Any, List, Dict, Optional, Union
 import json
 
 from agent_framework import (
-    ChatMessage,
-    FunctionResultContent,
-    FunctionApprovalResponseContent,
-    RequestInfoEvent,
+    Content,
+    Message,
     WorkflowCheckpoint,
+    WorkflowEvent,
 )
-from agent_framework._types import UserInputRequestContents
 
 from azure.ai.agentserver.core.logger import get_logger
 from azure.ai.agentserver.core.server.common.constants import HUMAN_IN_THE_LOOP_FUNCTION_NAME
@@ -21,16 +19,16 @@ logger = get_logger()
 class HumanInTheLoopHelper:
 
     def get_pending_hitl_request(self,
-            thread_messages: List[ChatMessage] = None,
+            thread_messages: List[Message] = None,
             checkpoint: Optional[WorkflowCheckpoint] = None,
-        ) -> dict[str, Union[RequestInfoEvent, Any]]:
+        ) -> dict[str, Union[WorkflowEvent, Any]]:
         res = {}
         # if has checkpoint (WorkflowAgent), find pending request info from checkpoint
         if checkpoint and checkpoint.pending_request_info_events:
             for call_id, request in checkpoint.pending_request_info_events.items():
                 # find if the request is already responded in the thread messages
                 if isinstance(request, dict):
-                    request_obj = RequestInfoEvent.from_dict(request)
+                    request_obj = WorkflowEvent.from_dict(request)
                 res[call_id] = request_obj
             return res
 
@@ -40,29 +38,29 @@ class HumanInTheLoopHelper:
         # if no checkpoint (Agent), find user input request and pair the feedbacks
         for message in thread_messages:
             for content in message.contents:
-                if isinstance(content, UserInputRequestContents):
+                if getattr(content, 'type', None) == "user_input_request":
                     # is a human input request
                     function_call = content.function_call
                     call_id = getattr(function_call, "call_id", "")
                     if call_id:
-                        res[call_id] = RequestInfoEvent(
+                        res[call_id] = WorkflowEvent(
                             source_executor_id="agent",
                             request_id=call_id,
                             response_type=None,
                             request_data=function_call,
                         )
-                elif isinstance(content, FunctionResultContent):
+                elif getattr(content, 'type', None) == "function_result":
                     if content.call_id and content.call_id in res:
                         # remove requests that already got feedback
                         res.pop(content.call_id)
-                elif isinstance(content, FunctionApprovalResponseContent):
+                elif getattr(content, 'type', None) == "function_approval_response":
                     function_call = content.function_call
                     call_id = getattr(function_call, "call_id", "")
                     if call_id and call_id in res:
                         res.pop(call_id)
         return res
 
-    def convert_user_input_request_content(self, content: UserInputRequestContents) -> dict:
+    def convert_user_input_request_content(self, content: Content) -> dict:
         function_call = content.function_call
         call_id = getattr(function_call, "call_id", "")
         arguments = self.convert_request_arguments(getattr(function_call, "arguments", ""))
@@ -90,8 +88,8 @@ class HumanInTheLoopHelper:
 
     def validate_and_convert_hitl_response(self,
             input: Union[str, List[Dict], None],
-            pending_requests: Dict[str, RequestInfoEvent],
-        ) -> Optional[List[ChatMessage]]:
+            pending_requests: Dict[str, WorkflowEvent],
+        ) -> Optional[List[Message]]:
 
         if input is None or isinstance(input, str):
             logger.warning("Expected list input for HitL response validation, got str.")
@@ -107,20 +105,20 @@ class HumanInTheLoopHelper:
                 res.append(self.convert_response(pending_requests[call_id], item))
         return res
 
-    def convert_response(self, hitl_request: RequestInfoEvent, input: Dict) -> ChatMessage:
+    def convert_response(self, hitl_request: WorkflowEvent, input: Dict) -> Message:
         response_type  = hitl_request.response_type
         response_result = input.get("output", "")
         logger.info(f"response_type {type(response_type)}: %s", response_type)
         if response_type and hasattr(response_type, "convert_from_payload"):
             response_result = response_type.convert_from_payload(input.get("output", ""))
         logger.info(f"response_result {type(response_result)}: %s", response_result)
-        response_content = FunctionResultContent(
+        response_content = Content.from_function_result(
             call_id=hitl_request.request_id,
             result=response_result,
         )
-        return ChatMessage(role="tool", contents=[response_content])
+        return Message(role="tool", contents=[response_content])
 
-    def remove_hitl_content_from_thread(self, thread_messages: List[ChatMessage]) -> List[ChatMessage]:
+    def remove_hitl_content_from_thread(self, thread_messages: List[Message]) -> List[Message]:
         """Remove HITL function call contents and related results from a conversation thread.
 
         HITL requests become ``function_call`` entries named ``HUMAN_IN_THE_LOOP_FUNCTION_NAME`` when converted
@@ -128,9 +126,9 @@ class HumanInTheLoopHelper:
         HITL function_calls and their placeholder outputs while preserving real tool invocations.
 
         :param thread_messages: The messages converted from the conversation API.
-        :type thread_messages: List[ChatMessage]
+        :type thread_messages: List[Message]
         :return: Messages without HITL-specific artifacts.
-        :rtype: List[ChatMessage]
+        :rtype: List[Message]
         """
         filtered_messages = []
 
@@ -194,7 +192,7 @@ class HumanInTheLoopHelper:
                     else:
                         filtered_contents.append(content)
             if filtered_contents:
-                filtered_message = ChatMessage(
+                filtered_message = Message(
                     role=message.role,
                     contents=filtered_contents,
                     message_id=message.message_id,
@@ -203,7 +201,7 @@ class HumanInTheLoopHelper:
                 filtered_messages.append(filtered_message)
 
             if prev_function_output:
-                pending_tool_message = ChatMessage(
+                pending_tool_message = Message(
                     role="tool",
                     contents=[prev_function_output],
                     message_id=message.message_id,

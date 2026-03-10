@@ -8,13 +8,9 @@ import json
 from typing import Any, List
 
 from agent_framework import (
-    AgentRunResponse,
-    FunctionCallContent,
-    FunctionResultContent,
-    ErrorContent,
-    TextContent,
+    AgentResponse,
+    Content,
 )
-from agent_framework._types import UserInputRequestContents
 
 from azure.ai.agentserver.core import AgentRunContext
 from azure.ai.agentserver.core.logger import get_logger
@@ -60,17 +56,17 @@ class AgentFrameworkOutputNonStreamingConverter:  # pylint: disable=name-too-lon
             "response_id": self._response_id,
         }
 
-    def transform_output_for_response(self, response: AgentRunResponse) -> OpenAIResponse:
+    def transform_output_for_response(self, response: AgentResponse) -> OpenAIResponse:
         """Build an OpenAIResponse capturing all supported content types.
 
         Previously this method only emitted text message items. We now also capture:
-          - FunctionCallContent  -> function_call output item
-          - FunctionResultContent -> function_call_output item
+          - function_call content  -> function_call output item
+          - function_result content -> function_call_output item
 
         to stay aligned with the streaming converter so no output is lost.
 
-        :param response: The AgentRunResponse from the agent framework.
-        :type response: AgentRunResponse
+        :param response: The AgentResponse from the agent framework.
+        :type response: AgentResponse
 
         :return: The constructed OpenAIResponse.
         :rtype: OpenAIResponse
@@ -118,20 +114,21 @@ class AgentFrameworkOutputNonStreamingConverter:  # pylint: disable=name-too-lon
         :return: None
         :rtype: None
         """
-        if isinstance(content, TextContent):
+        content_type = getattr(content, 'type', None)
+        if content_type == "text":
             self._append_text_content(content, sink, author_name)
-        elif isinstance(content, FunctionCallContent):
+        elif content_type == "function_call":
             self._append_function_call_content(content, sink, author_name)
-        elif isinstance(content, FunctionResultContent):
+        elif content_type == "function_result":
             self._append_function_result_content(content, sink, author_name)
-        elif isinstance(content, UserInputRequestContents):
+        elif content_type == "user_input_request":
             self._append_user_input_request_contents(content, sink, author_name)
-        elif isinstance(content, ErrorContent):
+        elif content_type == "error":
             raise ValueError(f"ErrorContent received: code={content.error_code}, message={content.message}")
         else:
-            logger.debug("unsupported content type skipped: %s", type(content).__name__)
+            logger.debug("unsupported content type skipped: %s", content_type)
 
-    def _append_text_content(self, content: TextContent, sink: List[dict], author_name: str) -> None:
+    def _append_text_content(self, content: Content, sink: List[dict], author_name: str) -> None:
         text_value = getattr(content, "text", None)
         if not text_value:
             return
@@ -155,7 +152,7 @@ class AgentFrameworkOutputNonStreamingConverter:  # pylint: disable=name-too-lon
         )
         logger.debug("    added message item id=%s text_len=%d", item_id, len(text_value))
 
-    def _append_function_call_content(self, content: FunctionCallContent, sink: List[dict], author_name: str) -> None:
+    def _append_function_call_content(self, content: Content, sink: List[dict], author_name: str) -> None:
         name = getattr(content, "name", "") or ""
         arguments = getattr(content, "arguments", "")
         if not isinstance(arguments, str):
@@ -186,7 +183,7 @@ class AgentFrameworkOutputNonStreamingConverter:  # pylint: disable=name-too-lon
 
     def _append_function_result_content(
         self,
-        content: FunctionResultContent,
+        content: Content,
         sink: List[dict],
         author_name: str,
     ) -> None:
@@ -220,7 +217,7 @@ class AgentFrameworkOutputNonStreamingConverter:  # pylint: disable=name-too-lon
 
     def _append_user_input_request_contents(
         self,
-        content: UserInputRequestContents,
+        content: Content,
         sink: List[dict],
         author_name: str,
     ) -> None:
@@ -259,7 +256,7 @@ class AgentFrameworkOutputNonStreamingConverter:  # pylint: disable=name-too-lon
         if isinstance(value, str):
             return value
         # Direct TextContent instance
-        if isinstance(value, TextContent):
+        if isinstance(value, Content) and value.type == "text":
             content_payload = {"type": "text", "text": getattr(value, "text", "")}
             return content_payload
 
